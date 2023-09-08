@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>Observer</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
+</head>
+
+<body>
+
+    <div id="terminal"></div>
+        <script>
+            let term = new Terminal();
+            term.open(document.getElementById('terminal'), {
+                fontSize: 10,
+                screenKeys: true
+            });
+            term.write('\x1b[?47h\x1b[?25l');
+            let websocket = new WebSocket(`ws://${window.location.host}/ws`);
+            websocket.onopen = function(evt) {
+                let acc = "";
+                let timer = undefined;
+                function send() {
+                    console.log("sending %O", acc);
+                    websocket.send(acc);
+                    acc = "";
+                }
+                let prev = undefined;
+                function onDataHandler(key, e) {
+                    console.log("key: %O, e: %O", key, e);
+                    if(timer == undefined)
+                        timer = setTimeout(() => onDataHandler("", e), 300);
+                    else
+                        timer = clearTimeout(timer);
+                    acc += key;
+                    if(acc.length == 2 || key == "")
+                        send();
+                }
+                term.onData(onDataHandler);
+            }
+            websocket.onmessage = function(evt) {
+                if(evt.data[0] == '\x00')
+                    handle_command(evt.data.slice(1));
+                else {
+                    term.write(evt.data)
+                }
+            };
+            websocket.onclose = function(evt) {
+                term.onData = undefined;
+                term.clear();
+            }
+
+            function handle_command(msg) {
+                let command = msg.split("|");
+                switch(command[0]) {
+                    case "set_columns":
+                        term.resize(Number.parseInt(command[1]), term.rows);
+                        break;
+                    case "get_geometry":
+                        websocket.send(`\x00${term.rows},${term.cols}`);
+                        break;
+                    default:
+                        console.log("Unknown command %O", command);
+                        break;
+                }
+            }
+        </script>
+</body>
+</html> 
